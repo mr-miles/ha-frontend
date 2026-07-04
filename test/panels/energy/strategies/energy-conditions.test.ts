@@ -3,11 +3,12 @@ import type {
   EnergyPreferences,
   EnergySource,
 } from "../../../../src/data/energy";
-import { ENERGY_CARD_CATALOG } from "../../../../src/panels/energy/strategies/energy-cards";
+import type { EnergyViewPath } from "../../../../src/panels/energy/strategies/energy-cards";
 import {
-  ENERGY_CARD_APPLICABILITY_KEYS,
-  EnergyConditions,
-} from "../../../../src/panels/energy/strategies/energy-conditions";
+  ENERGY_VIEW_CARDS,
+  energyCardKey,
+} from "../../../../src/panels/energy/strategies/energy-cards";
+import { EnergyConditions } from "../../../../src/panels/energy/strategies/energy-conditions";
 
 const source = (s: Partial<EnergySource> & { type: string }): EnergySource =>
   s as unknown as EnergySource;
@@ -124,11 +125,6 @@ describe("EnergyConditions memoization", () => {
 });
 
 describe("EnergyConditions.isApplicable", () => {
-  it("has exactly one applicability rule per catalog entry", () => {
-    const catalogKeys = new Set(ENERGY_CARD_CATALOG.map((c) => c.key));
-    expect(ENERGY_CARD_APPLICABILITY_KEYS).toEqual(catalogKeys);
-  });
-
   it("gates the solar graph and gauges on their sources", () => {
     expect(
       new EnergyConditions(makePrefs({ energy_sources: [SOLAR] })).isApplicable(
@@ -209,14 +205,15 @@ describe("EnergyConditions.isVisible", () => {
     const conditions = new EnergyConditions(
       makePrefs({ energy_sources: [GRID_RETURN, SOLAR, GAS, WATER] })
     );
-    for (const entry of ENERGY_CARD_CATALOG) {
-      expect(conditions.isVisible(entry.view, entry.cardType, undefined)).toBe(
-        conditions.isApplicable(entry.view, entry.cardType)
-      );
-      // Hiding the card's own key always wins.
-      expect(
-        conditions.isVisible(entry.view, entry.cardType, [entry.key])
-      ).toBe(false);
+    for (const view of Object.keys(ENERGY_VIEW_CARDS) as EnergyViewPath[]) {
+      for (const spec of ENERGY_VIEW_CARDS[view]) {
+        expect(conditions.isVisible(view, spec.cardType, undefined)).toBe(
+          conditions.isApplicable(view, spec.cardType)
+        );
+        // Hiding the card's own key always wins.
+        const key = energyCardKey(view, spec.cardType);
+        expect(conditions.isVisible(view, spec.cardType, [key])).toBe(false);
+      }
     }
   });
 });

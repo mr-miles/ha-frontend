@@ -6,7 +6,7 @@ import type {
 import type { HomeAssistant } from "../../../types";
 import type { EnergyViewPath } from "./energy-cards";
 import {
-  ENERGY_CARD_CATALOG,
+  ENERGY_VIEW_CARDS,
   energyCardKey,
   isEnergyCardHidden,
 } from "./energy-cards";
@@ -28,107 +28,14 @@ type EnergyConditionName =
   | "hasWaterRateSource"
   | "hasGasRateSource";
 
-type EnergyCardApplicabilityPredicate = (
-  conditions: EnergyConditions
-) => boolean;
-
-/**
- * Card applicability, keyed by catalog entry. This is the single source of
- * truth for whether a card can ever show for a given set of preferences:
- * view strategies use it to decide what to render, and the customise dialog
- * uses it to decide what to offer, so the two can never disagree.
- */
-const ENERGY_CARD_APPLICABILITY: ReadonlyMap<
-  string,
-  EnergyCardApplicabilityPredicate
-> = new Map<string, EnergyCardApplicabilityPredicate>([
-  // --- Overview ---
-  [
-    energyCardKey("overview", "energy-distribution"),
-    (c) => c.hasGridSource || c.hasBattery || c.hasSolar,
-  ],
-  [energyCardKey("overview", "energy-sources-table"), (c) => c.hasAnySource],
-  [energyCardKey("overview", "power-sources-graph"), (c) => c.hasPowerSources],
-  [
-    energyCardKey("overview", "energy-usage-graph"),
-    (c) => c.hasGridSource || c.hasBattery,
-  ],
-  [energyCardKey("overview", "energy-gas-graph"), (c) => c.hasGasSource],
-  [
-    energyCardKey("overview", "energy-water-graph"),
-    (c) => c.hasWaterSource || c.hasWaterDevices,
-  ],
-
-  // --- Electricity ---
-  [
-    energyCardKey("electricity", "energy-distribution"),
-    (c) => c.hasGridSource || c.hasBattery || c.hasSolar,
-  ],
-  [
-    energyCardKey("electricity", "energy-grid-balance"),
-    (c) => c.hasGridSource && c.hasReturn,
-  ],
-  [
-    energyCardKey("electricity", "energy-grid-neutrality-gauge"),
-    (c) => c.hasReturn,
-  ],
-  [
-    energyCardKey("electricity", "energy-solar-consumed-gauge"),
-    (c) => c.hasSolar && c.hasReturn,
-  ],
-  [
-    energyCardKey("electricity", "energy-self-sufficiency-gauge"),
-    (c) => c.hasSolar && c.hasGridSource,
-  ],
-  [
-    energyCardKey("electricity", "energy-carbon-consumed-gauge"),
-    (c) => c.hasGridSource,
-  ],
-  [
-    energyCardKey("electricity", "energy-usage-graph"),
-    (c) => c.hasGridSource || c.hasBattery,
-  ],
-  [energyCardKey("electricity", "energy-solar-graph"), (c) => c.hasSolar],
-  [
-    energyCardKey("electricity", "energy-sources-table"),
-    (c) => c.hasGridSource || c.hasSolar || c.hasBattery,
-  ],
-  [
-    energyCardKey("electricity", "energy-devices-detail-graph"),
-    (c) => c.hasDeviceConsumption,
-  ],
-  [
-    energyCardKey("electricity", "energy-devices-graph"),
-    (c) => c.hasDeviceConsumption,
-  ],
-  [
-    energyCardKey("electricity", "energy-sankey"),
-    (c) => c.hasDeviceConsumption,
-  ],
-
-  // --- Gas ---
-  [energyCardKey("gas", "energy-gas-graph"), (c) => c.hasGasSource],
-  [energyCardKey("gas", "energy-sources-table"), (c) => c.hasGasSource],
-
-  // --- Water ---
-  [energyCardKey("water", "energy-water-graph"), (c) => c.hasWaterSource],
-  [energyCardKey("water", "energy-sources-table"), (c) => c.hasWaterSource],
-  [energyCardKey("water", "water-sankey"), (c) => c.hasWaterDevices],
-
-  // --- Now (power) ---
-  [energyCardKey("now", "power-sources-graph"), (c) => c.hasPowerSources],
-  [energyCardKey("now", "power-sankey"), (c) => c.hasPowerDevices],
-  [energyCardKey("now", "water-flow-sankey"), (c) => c.hasWaterRateDevices],
-]);
-
 /**
  * The applicability/visibility decisions for the energy dashboard, computed
  * once per set of preferences. Source-shape predicates (`hasGridSource`,
  * `hasBattery`, ...) are lazily evaluated and cached on first access, since
- * a single `generate()` call reads several of them multiple times across
- * catalog entries. Card-level applicability is derived from those
- * predicates here, so it lives with the rest of the strategy logic rather
- * than inside the (data-only) card catalog.
+ * a single `generate()` call reads several of them multiple times across a
+ * view's cards. Card-level applicability is read directly from each view's
+ * own card list (`ENERGY_VIEW_CARDS` in energy-cards.ts) - there's no
+ * separate applicability table that could drift out of sync with it.
  */
 export class EnergyConditions {
   constructor(private readonly _prefs: EnergyPreferences) {}
@@ -269,10 +176,8 @@ export class EnergyConditions {
 
   /** Whether the catalog card `(view, cardType)` can ever show for these preferences. */
   isApplicable(view: EnergyViewPath, cardType: string): boolean {
-    const predicate = ENERGY_CARD_APPLICABILITY.get(
-      energyCardKey(view, cardType)
-    );
-    return !!predicate && predicate(this);
+    const spec = ENERGY_VIEW_CARDS[view]?.find((c) => c.cardType === cardType);
+    return !!spec && spec.isApplicable(this);
   }
 
   /**
@@ -292,9 +197,9 @@ export class EnergyConditions {
 
   /** Keys of all catalog cards that apply to these preferences for a view. */
   applicableCardKeys(view: EnergyViewPath): string[] {
-    return ENERGY_CARD_CATALOG.filter(
-      (c) => c.view === view && this.isApplicable(c.view, c.cardType)
-    ).map((c) => c.key);
+    return (ENERGY_VIEW_CARDS[view] ?? [])
+      .filter((c) => c.isApplicable(this))
+      .map((c) => energyCardKey(view, c.cardType));
   }
 
   /** True when a view has applicable cards but every one of them is hidden. */
@@ -305,11 +210,6 @@ export class EnergyConditions {
     );
   }
 }
-
-/** Exposed for tests that verify every catalog entry has an applicability rule. */
-export const ENERGY_CARD_APPLICABILITY_KEYS: ReadonlySet<string> = new Set(
-  ENERGY_CARD_APPLICABILITY.keys()
-);
 
 /**
  * Fetches the energy collection for `collectionKey` and wraps its

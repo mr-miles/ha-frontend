@@ -27,10 +27,14 @@ import { DirtyStateProviderMixin } from "../../../../mixins/dirty-state-provider
 import { haStyleDialog } from "../../../../resources/styles";
 import { showToast } from "../../../../util/toast";
 import type {
-  EnergyCardDefinition,
+  EnergyCardSpec,
   EnergyViewPath,
 } from "../../../energy/strategies/energy-cards";
-import { ENERGY_CARD_CATALOG } from "../../../energy/strategies/energy-cards";
+import {
+  ENERGY_CARD_LABELS,
+  ENERGY_VIEW_CARDS,
+  energyCardKey,
+} from "../../../energy/strategies/energy-cards";
 import { EnergyConditions } from "../../../energy/strategies/energy-conditions";
 import type { EnergyCustomiseDialogParams } from "./show-dialog-energy-customise";
 
@@ -169,9 +173,9 @@ export class DialogEnergyCustomise
   private _renderGroups() {
     const conditions = this._conditions!;
     return VIEW_GROUPS.map((group) => {
-      const cards = ENERGY_CARD_CATALOG.filter((c) => c.view === group.view);
+      const cards = ENERGY_VIEW_CARDS[group.view];
       // Hide the whole group when none of its cards apply to the current config.
-      if (!cards.some((c) => conditions.isApplicable(c.view, c.cardType))) {
+      if (!cards.some((c) => conditions.isApplicable(group.view, c.cardType))) {
         return nothing;
       }
       return html`
@@ -181,27 +185,29 @@ export class DialogEnergyCustomise
           .header=${this._i18n.localize(group.labelKey)}
         >
           <div class="cards">
-            ${cards.map((card) => this._renderCardRow(card))}
+            ${cards.map((card) => this._renderCardRow(group.view, card))}
           </div>
         </ha-expansion-panel>
       `;
     });
   }
 
-  private _renderCardRow(card: EnergyCardDefinition) {
-    const applicable = this._conditions!.isApplicable(card.view, card.cardType);
-    const label = this._i18n.localize(card.labelKey);
-    const rowId = `row-${card.key}`;
+  private _renderCardRow(view: EnergyViewPath, card: EnergyCardSpec) {
+    const applicable = this._conditions!.isApplicable(view, card.cardType);
+    const labelKey = ENERGY_CARD_LABELS[card.cardType];
+    const label = labelKey ? this._i18n.localize(labelKey) : card.cardType;
+    const key = energyCardKey(view, card.cardType);
+    const rowId = `row-${key}`;
     return html`
       <ha-settings-row slim id=${rowId}>
         <span slot="heading" class=${applicable ? "" : "disabled"}
           >${label}</span
         >
         <ha-switch
-          .checked=${applicable && !this._hidden!.has(card.key)}
+          .checked=${applicable && !this._hidden!.has(key)}
           .disabled=${!applicable}
           .ariaLabel=${label}
-          data-card-key=${card.key}
+          data-card-key=${key}
           @change=${this._toggleCard}
         ></ha-switch>
       </ha-settings-row>

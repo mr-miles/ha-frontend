@@ -4,7 +4,7 @@ import { DEFAULT_POWER_COLLECTION_KEY } from "../../../data/energy";
 import type { LovelaceViewConfig } from "../../../data/lovelace/config/view";
 import type { HomeAssistant } from "../../../types";
 import type { EnergyViewStrategyConfig } from "./energy-cards";
-import type { EnergyCardSpec } from "./energy-card-builder";
+import { POWER_CARDS } from "./energy-cards";
 import { EnergyCardBuilder } from "./energy-card-builder";
 import type { EnergyConditions } from "./energy-conditions";
 import { loadEnergyConditions } from "./energy-conditions";
@@ -86,34 +86,35 @@ export class PowerViewStrategy extends ReactiveElement {
       }
     });
 
-    // Chart cards, in order, when visible. The sankey cards need per-source
-    // computed extras, so each builds its own lazily.
-    const chartCards: readonly EnergyCardSpec[] = [
-      {
-        cardType: "power-sources-graph",
-        extra: { grid_options: { columns: 36 } },
-      },
-      {
-        cardType: "power-sankey",
-        extra: () =>
+    builder.addAll(chartsSection.cards!, POWER_CARDS);
+
+    // The sankey cards need per-source computed extras, so each is built
+    // directly here rather than through the generic addAll loop above.
+    if (builder.isVisible("power-sankey")) {
+      chartsSection.cards!.push(
+        builder.card(
+          "power-sankey",
           builder.sankeyExtra(
             conditions.preferences.device_consumption,
             (d) => d.stat_rate,
             36
-          ),
-      },
-      {
-        cardType: "water-flow-sankey",
-        extra: () =>
+          )
+        )
+      );
+    }
+
+    if (builder.isVisible("water-flow-sankey")) {
+      chartsSection.cards!.push(
+        builder.card(
+          "water-flow-sankey",
           builder.sankeyExtra(
             conditions.preferences.device_consumption_water,
             (d) => d.stat_rate,
             36
-          ),
-      },
-    ];
-
-    builder.addAll(chartsSection.cards!, chartCards);
+          )
+        )
+      );
+    }
 
     if (badges.length) {
       view.badges = badges;

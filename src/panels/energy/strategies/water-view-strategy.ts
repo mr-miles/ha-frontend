@@ -5,22 +5,10 @@ import type { LovelaceViewConfig } from "../../../data/lovelace/config/view";
 import type { HomeAssistant } from "../../../types";
 import type { LovelaceStrategyDependency } from "../../lovelace/strategies/types";
 import type { EnergyViewStrategyConfig } from "./energy-cards";
-import type { EnergyCardSpec } from "./energy-card-builder";
+import { WATER_CARDS } from "./energy-cards";
 import { EnergyCardBuilder } from "./energy-card-builder";
 import { loadEnergyConditions } from "./energy-conditions";
 import { createSingleSectionView } from "./energy-view-layout";
-
-/** Cards appended to the single water section, in order, when visible. */
-const WATER_CARDS: readonly EnergyCardSpec[] = [
-  {
-    cardType: "energy-water-graph",
-    extra: { grid_options: { columns: 24 } },
-  },
-  {
-    cardType: "energy-sources-table",
-    extra: { types: ["water"], grid_options: { columns: 12 } },
-  },
-];
 
 @customElement("water-view-strategy")
 export class WaterViewStrategy extends ReactiveElement {

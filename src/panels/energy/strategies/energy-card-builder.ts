@@ -1,32 +1,20 @@
 import type { DeviceConsumptionEnergyPreference } from "../../../data/energy";
 import type { LovelaceCardConfig } from "../../../data/lovelace/config/card";
 import type { HomeAssistant } from "../../../types";
-import type { EnergyViewPath } from "./energy-cards";
-import { energyCardEntry } from "./energy-cards";
+import type { EnergyCardSpec, EnergyViewPath } from "./energy-cards";
+import { ENERGY_CARD_LABELS } from "./energy-cards";
 import type { EnergyConditions } from "./energy-conditions";
 import { shouldShowFloorsAndAreas } from "./show-floors-and-areas";
 
 export interface EnergyCardOptions {
-  /** Localize the catalog label into `title`. Defaults to `true`. */
-  title?: boolean;
-}
-
-/**
- * A declarative row for `EnergyCardBuilder.addAll`. `extra` may be a plain
- * object, or a thunk for call sites whose extras need per-source computed
- * values (e.g. `sankeyExtra`) - the thunk only runs when the card is
- * actually visible.
- */
-export interface EnergyCardSpec {
-  cardType: string;
-  extra?: Partial<LovelaceCardConfig> | (() => Partial<LovelaceCardConfig>);
+  /** Localize the card's global label into `title`. Defaults to `true`. */
   title?: boolean;
 }
 
 /**
  * Assembles the Lovelace card configs for a single energy view. A view
- * strategy creates one builder for its view and loops over a declarative
- * list of card specs, instead of repeating an
+ * strategy creates one builder for its view and loops over its declarative
+ * list of card specs (from energy-cards.ts), instead of repeating an
  * `if (isEnergyCardVisible(...)) { section.cards.push({ ... }) }` block per
  * card.
  */
@@ -46,7 +34,7 @@ export class EnergyCardBuilder {
 
   /**
    * Builds the config for `cardType`: `type` and `collection_key` are always
-   * set, the title defaults to the catalog's localized label (when one
+   * set, the title defaults to the card's global localized label (when one
    * exists), and `extra` is layered on top for card-specific options.
    */
   card(
@@ -54,13 +42,13 @@ export class EnergyCardBuilder {
     extra: Partial<LovelaceCardConfig> = {},
     options: EnergyCardOptions = {}
   ): LovelaceCardConfig {
-    const entry = energyCardEntry(this._view, cardType);
+    const labelKey = ENERGY_CARD_LABELS[cardType];
     const withTitle = options.title ?? true;
     return {
       type: cardType,
       collection_key: this._collectionKey,
-      ...(withTitle && entry
-        ? { title: this._hass.localize(entry.labelKey) }
+      ...(withTitle && labelKey
+        ? { title: this._hass.localize(labelKey) }
         : {}),
       ...extra,
     } as LovelaceCardConfig;
@@ -87,17 +75,15 @@ export class EnergyCardBuilder {
   }
 
   /**
-   * Builds and appends every visible spec's card to `target`, in order. The
-   * shared shape for a view's "loop over a declarative list of cards"
-   * pattern, so strategies don't each write their own for-loop over
-   * `addTo`.
+   * Builds and appends every visible, non-dynamic spec's card to `target`,
+   * in order. Cards marked `dynamic` are skipped - their owning strategy
+   * builds them directly, since they need live per-request data (see
+   * `sankeyExtra`).
    */
   addAll(target: LovelaceCardConfig[], specs: readonly EnergyCardSpec[]): void {
     for (const spec of specs) {
-      if (!this.isVisible(spec.cardType)) continue;
-      const extra =
-        typeof spec.extra === "function" ? spec.extra() : spec.extra;
-      target.push(this.card(spec.cardType, extra, { title: spec.title }));
+      if (spec.dynamic || !this.isVisible(spec.cardType)) continue;
+      target.push(this.card(spec.cardType, spec.extra, { title: spec.title }));
     }
   }
 

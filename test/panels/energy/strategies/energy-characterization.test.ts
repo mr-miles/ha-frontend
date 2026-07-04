@@ -1,15 +1,14 @@
-// Characterization tests: run the refactored strategies and the pre-refactor
-// originals (frozen under ./__legacy__, extracted from git history) against
-// the same set of preference fixtures and assert byte-identical output. This
-// is a regression net for the energy-cards/energy-conditions/energy-card-
-// builder refactor - it doesn't assert anything about *correct* behaviour,
-// only that behaviour did not change.
-//
-// The view-strategy config always pins an explicit `collection_key` below.
-// That sidesteps one deliberate behaviour change: `PowerViewStrategy` now
-// falls back to `DEFAULT_POWER_COLLECTION_KEY` (not the shared energy
-// collection) when no `collection_key` is configured, unlike the legacy
-// original - see power-view-strategy.test.ts for that specific behaviour.
+/**
+ * Characterization tests pinning the exact current output of the energy
+ * dashboard's view/strategy generators, across a wide range of preference
+ * fixtures. These exist as a regression net for changes to the
+ * energy-cards/energy-conditions/energy-card-builder catalog and the
+ * strategies that consume it - a refactor should leave every snapshot here
+ * unchanged.
+ *
+ * Do NOT update these snapshots to make a refactor "pass"; an output change
+ * is a behaviour change and must be escalated instead.
+ */
 import { describe, expect, it } from "vitest";
 import type {
   DeviceConsumptionEnergyPreference,
@@ -24,12 +23,6 @@ import { GasViewStrategy } from "../../../../src/panels/energy/strategies/gas-vi
 import { WaterViewStrategy } from "../../../../src/panels/energy/strategies/water-view-strategy";
 import { PowerViewStrategy } from "../../../../src/panels/energy/strategies/power-view-strategy";
 import { EnergyDashboardStrategy } from "../../../../src/panels/energy/strategies/energy-dashboard-strategy";
-import { LegacyEnergyOverviewViewStrategy } from "./__legacy__/energy-overview-view-strategy";
-import { LegacyEnergyViewStrategy } from "./__legacy__/energy-view-strategy";
-import { LegacyGasViewStrategy } from "./__legacy__/gas-view-strategy";
-import { LegacyWaterViewStrategy } from "./__legacy__/water-view-strategy";
-import { LegacyPowerViewStrategy } from "./__legacy__/power-view-strategy";
-import { LegacyEnergyDashboardStrategy } from "./__legacy__/energy-dashboard-strategy";
 
 const source = (s: Partial<EnergySource> & { type: string }): EnergySource =>
   s as unknown as EnergySource;
@@ -256,89 +249,50 @@ const FIXTURES: Fixture[] = [
   },
 ];
 
-const VIEW_STRATEGY_PAIRS: {
+const VIEW_STRATEGIES: {
   name: string;
-  legacy: { generate: (config: any, hass: HomeAssistant) => Promise<unknown> };
-  current: {
+  strategy: {
     generate: (config: any, hass: HomeAssistant) => Promise<unknown>;
   };
 }[] = [
-  {
-    name: "overview",
-    legacy: LegacyEnergyOverviewViewStrategy,
-    current: EnergyOverviewViewStrategy,
-  },
-  {
-    name: "electricity",
-    legacy: LegacyEnergyViewStrategy,
-    current: EnergyViewStrategy,
-  },
-  { name: "gas", legacy: LegacyGasViewStrategy, current: GasViewStrategy },
-  {
-    name: "water",
-    legacy: LegacyWaterViewStrategy,
-    current: WaterViewStrategy,
-  },
-  {
-    name: "power (now)",
-    legacy: LegacyPowerViewStrategy,
-    current: PowerViewStrategy,
-  },
+  { name: "overview", strategy: EnergyOverviewViewStrategy },
+  { name: "electricity", strategy: EnergyViewStrategy },
+  { name: "gas", strategy: GasViewStrategy },
+  { name: "water", strategy: WaterViewStrategy },
+  { name: "power (now)", strategy: PowerViewStrategy },
 ];
 
-describe.each(VIEW_STRATEGY_PAIRS)(
-  "$name view strategy matches the original",
-  ({ legacy, current }) => {
-    it.each(FIXTURES)("for: $name", async ({ prefs, hidden }) => {
-      // Pinned explicitly so PowerViewStrategy's new own-default (see the
-      // file header) doesn't make it diverge from the legacy original here.
+describe.each(VIEW_STRATEGIES)("$name view strategy output", ({ strategy }) => {
+  it.each(FIXTURES)(
+    "matches snapshot for: $name",
+    async ({ prefs, hidden }) => {
+      // Pinned explicitly: PowerViewStrategy defaults its own collection key
+      // when unspecified (see power-view-strategy.test.ts), which would
+      // otherwise make its snapshot depend on that default rather than on the
+      // card-building logic these tests target.
       const config = {
         type: "energy-view",
         collection_key: DEFAULT_ENERGY_COLLECTION_KEY,
         hidden_cards: hidden,
       };
-      const legacyResult = await legacy.generate(config, makeHass(prefs));
-      const currentResult = await current.generate(config, makeHass(prefs));
-      expect(currentResult).toEqual(legacyResult);
-    });
-  }
-);
-
-/**
- * The dashboard intentionally no longer pins `collection_key` on each
- * generated view (see the comment on `defineView` in
- * energy-dashboard-strategy.ts): every view strategy now has its own
- * strategy-dependent default that already matches what the dashboard wants,
- * so it's left for each view strategy to resolve instead of being restated
- * here. Strips it from both sides before comparing against the legacy
- * original, which always pinned it explicitly.
- */
-const stripCollectionKey = (config: {
-  views: readonly Record<string, any>[];
-}) => ({
-  ...config,
-  views: config.views.map((view) => {
-    if (!view.strategy) return view;
-    const { collection_key, ...rest } = view.strategy;
-    return { ...view, strategy: rest };
-  }),
+      const result = await strategy.generate(config, makeHass(prefs));
+      expect(result).toMatchSnapshot();
+    }
+  );
 });
 
-describe("dashboard strategy matches the original", () => {
-  it.each(FIXTURES)("for: $name", async ({ prefs, hidden }) => {
-    const config = { type: "energy" as const, hidden_cards: hidden };
-    const legacyResult = await LegacyEnergyDashboardStrategy.generate(
-      config,
-      makeHass(prefs)
-    );
-    const currentResult = await EnergyDashboardStrategy.generate(
-      config,
-      makeHass(prefs)
-    );
-    expect(stripCollectionKey(currentResult)).toEqual(
-      stripCollectionKey(legacyResult)
-    );
-  });
+describe("dashboard strategy output", () => {
+  it.each(FIXTURES)(
+    "matches snapshot for: $name",
+    async ({ prefs, hidden }) => {
+      const config = { type: "energy" as const, hidden_cards: hidden };
+      const result = await EnergyDashboardStrategy.generate(
+        config,
+        makeHass(prefs)
+      );
+      expect(result).toMatchSnapshot();
+    }
+  );
 
   it("omits collection_key from generated views, deferring to each view strategy's own default", async () => {
     const result: { views: Record<string, any>[] } =

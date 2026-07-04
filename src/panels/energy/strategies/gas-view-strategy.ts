@@ -4,23 +4,11 @@ import { DEFAULT_ENERGY_COLLECTION_KEY } from "../../../data/energy";
 import type { HomeAssistant } from "../../../types";
 import type { LovelaceViewConfig } from "../../../data/lovelace/config/view";
 import type { EnergyViewStrategyConfig } from "./energy-cards";
-import type { EnergyCardSpec } from "./energy-card-builder";
+import { GAS_CARDS } from "./energy-cards";
 import { EnergyCardBuilder } from "./energy-card-builder";
 import { loadEnergyConditions } from "./energy-conditions";
 import { createSingleSectionView } from "./energy-view-layout";
 import type { LovelaceStrategyDependency } from "../../lovelace/strategies/types";
-
-/** Cards appended to the single gas section, in order, when visible. */
-const GAS_CARDS: readonly EnergyCardSpec[] = [
-  {
-    cardType: "energy-gas-graph",
-    extra: { grid_options: { columns: 24 } },
-  },
-  {
-    cardType: "energy-sources-table",
-    extra: { types: ["gas"], grid_options: { columns: 12 } },
-  },
-];
 
 @customElement("gas-view-strategy")
 export class GasViewStrategy extends ReactiveElement {

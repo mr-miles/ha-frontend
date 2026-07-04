@@ -75,17 +75,18 @@ describe("EnergyCardBuilder.card", () => {
     });
   });
 
-  it("omits the title when the card has no catalog entry for this view", () => {
+  it("omits the title when the cardType has no global label", () => {
     const conditions = new EnergyConditions(makePrefs());
     const builder = new EnergyCardBuilder(
       makeHass(),
       conditions,
-      "gas",
+      "electricity",
       "my-collection",
       undefined
     );
-    expect(builder.card("energy-solar-graph")).toEqual({
-      type: "energy-solar-graph",
+    // "energy-compare" is never gated by the catalog and has no label.
+    expect(builder.card("energy-compare")).toEqual({
+      type: "energy-compare",
       collection_key: "my-collection",
     });
   });

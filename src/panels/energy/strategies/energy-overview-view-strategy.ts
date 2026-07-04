@@ -5,21 +5,10 @@ import type { HomeAssistant } from "../../../types";
 import type { LovelaceViewConfig } from "../../../data/lovelace/config/view";
 import type { LovelaceStrategyDependency } from "../../lovelace/strategies/types";
 import type { EnergyViewStrategyConfig } from "./energy-cards";
+import { OVERVIEW_CARDS } from "./energy-cards";
 import { EnergyCardBuilder } from "./energy-card-builder";
 import { loadEnergyConditions } from "./energy-conditions";
 import { energyDateSelectionFooter } from "./energy-view-layout";
-
-/** Cards rendered as their own single-card section, in order, when visible. */
-const OVERVIEW_SECTION_CARDS: readonly {
-  cardType: string;
-  extra?: Record<string, unknown>;
-}[] = [
-  { cardType: "energy-distribution" },
-  { cardType: "energy-sources-table", extra: { show_only_totals: true } },
-  { cardType: "power-sources-graph", extra: { show_legend: false } },
-  { cardType: "energy-usage-graph" },
-  { cardType: "energy-gas-graph" },
-];
 
 @customElement("energy-overview-view-strategy")
 export class EnergyOverviewViewStrategy extends ReactiveElement {
@@ -59,11 +48,11 @@ export class EnergyOverviewViewStrategy extends ReactiveElement {
       hidden
     );
 
-    for (const { cardType, extra } of OVERVIEW_SECTION_CARDS) {
-      if (!builder.isVisible(cardType)) continue;
+    for (const spec of OVERVIEW_CARDS) {
+      if (spec.dynamic || !builder.isVisible(spec.cardType)) continue;
       view.sections!.push({
         type: "grid",
-        cards: [builder.card(cardType, extra)],
+        cards: [builder.card(spec.cardType, spec.extra)],
       });
     }
 
@@ -72,10 +61,7 @@ export class EnergyOverviewViewStrategy extends ReactiveElement {
     if (builder.isVisible("energy-water-graph")) {
       const waterCard = conditions.hasWaterSource
         ? builder.card("energy-water-graph")
-        : builder.card("energy-water-graph", {
-            type: "water-sankey",
-            title: hass.localize("ui.panel.energy.cards.water_sankey_title"),
-          });
+        : builder.card("water-sankey");
       view.sections!.push({ type: "grid", cards: [waterCard] });
     }
 

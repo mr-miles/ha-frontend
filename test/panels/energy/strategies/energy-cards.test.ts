@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  energyCardEntry,
+  ENERGY_CARD_LABELS,
+  ENERGY_VIEW_CARDS,
   energyCardKey,
-  ENERGY_CARD_CATALOG,
   isEnergyCardHidden,
 } from "../../../../src/panels/energy/strategies/energy-cards";
 
@@ -12,44 +12,6 @@ describe("energyCardKey", () => {
       "electricity.energy-solar-graph"
     );
     expect(energyCardKey("now", "power-sankey")).toBe("now.power-sankey");
-  });
-});
-
-describe("ENERGY_CARD_CATALOG", () => {
-  it("contains only plain data: no applicability logic", () => {
-    for (const entry of ENERGY_CARD_CATALOG) {
-      expect(entry).not.toHaveProperty("isApplicable");
-      expect(typeof entry.key).toBe("string");
-      expect(typeof entry.view).toBe("string");
-      expect(typeof entry.cardType).toBe("string");
-      expect(typeof entry.labelKey).toBe("string");
-    }
-  });
-
-  it("derives every key from its own view and cardType", () => {
-    for (const entry of ENERGY_CARD_CATALOG) {
-      expect(entry.key).toBe(energyCardKey(entry.view, entry.cardType));
-    }
-  });
-
-  it("has no duplicate keys", () => {
-    const keys = ENERGY_CARD_CATALOG.map((c) => c.key);
-    expect(new Set(keys).size).toBe(keys.length);
-  });
-});
-
-describe("energyCardEntry", () => {
-  it("finds the catalog entry for a known (view, cardType) pair", () => {
-    const entry = energyCardEntry("electricity", "energy-solar-graph");
-    expect(entry?.key).toBe("electricity.energy-solar-graph");
-    expect(entry?.labelKey).toBe(
-      "ui.panel.energy.cards.energy_solar_graph_title"
-    );
-  });
-
-  it("returns undefined for an unknown pair", () => {
-    expect(energyCardEntry("gas", "energy-solar-graph")).toBeUndefined();
-    expect(energyCardEntry("electricity", "not-a-card")).toBeUndefined();
   });
 });
 
@@ -75,5 +37,51 @@ describe("isEnergyCardHidden", () => {
     expect(isEnergyCardHidden("electricity", "energy-solar-graph", [])).toBe(
       false
     );
+  });
+});
+
+describe("ENERGY_CARD_LABELS", () => {
+  it("is a global label independent of which view a card appears in", () => {
+    expect(ENERGY_CARD_LABELS["energy-sources-table"]).toBe(
+      "ui.panel.energy.cards.energy_sources_table_title"
+    );
+    expect(ENERGY_CARD_LABELS["energy-distribution"]).toBe(
+      "ui.panel.energy.cards.energy_distribution_title"
+    );
+  });
+
+  it("has a label for every card every view can render", () => {
+    for (const specs of Object.values(ENERGY_VIEW_CARDS)) {
+      for (const spec of specs) {
+        expect(ENERGY_CARD_LABELS[spec.cardType]).toBeDefined();
+      }
+    }
+  });
+});
+
+describe("ENERGY_VIEW_CARDS", () => {
+  it("covers every energy view path", () => {
+    expect(Object.keys(ENERGY_VIEW_CARDS).sort()).toEqual(
+      ["electricity", "gas", "now", "overview", "water"].sort()
+    );
+  });
+
+  it("never repeats a cardType within a single view's list", () => {
+    for (const [view, specs] of Object.entries(ENERGY_VIEW_CARDS)) {
+      const cardTypes = specs.map((c) => c.cardType);
+      expect(new Set(cardTypes).size, `duplicate cardType in ${view}`).toBe(
+        cardTypes.length
+      );
+    }
+  });
+
+  it("only uses `slot` for the electricity view, and gives every one of its cards a slot", () => {
+    for (const [view, specs] of Object.entries(ENERGY_VIEW_CARDS)) {
+      if (view === "electricity") {
+        expect(specs.every((c) => c.slot !== undefined)).toBe(true);
+      } else {
+        expect(specs.every((c) => c.slot === undefined)).toBe(true);
+      }
+    }
   });
 });
