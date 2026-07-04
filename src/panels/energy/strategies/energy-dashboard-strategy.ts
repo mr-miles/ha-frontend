@@ -14,56 +14,31 @@ import type { LocalizeKeys } from "../../../common/translations/localize";
 import type { HomeAssistant } from "../../../types";
 import type { LovelaceStrategyDependency } from "../../lovelace/strategies/types";
 import type { EnergyViewPath } from "./energy-cards";
-import {
-  hasDeviceConsumption,
-  hasEnergySource,
-  hasGasSource,
-  hasPowerDevices,
-  hasPowerSources,
-  hasWaterDevices,
-  hasWaterSource,
-  isEnergyViewEmpty,
-} from "./energy-cards";
+import { EnergyConditions } from "./energy-conditions";
 
-const OVERVIEW_VIEW = {
-  path: "overview",
-  strategy: {
-    type: "energy-overview",
-    collection_key: DEFAULT_ENERGY_COLLECTION_KEY,
-  },
-} as LovelaceStrategyViewConfig;
+/**
+ * Builds a view spec for one of this dashboard's tabs. `collection_key` is
+ * deliberately left unset: every energy view strategy already has its own
+ * default collection key (most default to the shared energy collection, but
+ * e.g. the "now" view defaults to the real-time one instead - see each
+ * view-strategy file), and those defaults already match what this dashboard
+ * wants for every tab. A user can still override it with an explicit
+ * `collection_key` of their own by configuring one of these view strategies
+ * directly in their own dashboard YAML, bypassing this dashboard strategy
+ * entirely - which is exactly why each view strategy's default is
+ * strategy-dependent rather than assumed here.
+ */
+const defineView = (path: string, type: string): LovelaceStrategyViewConfig =>
+  ({
+    path,
+    strategy: { type },
+  }) as LovelaceStrategyViewConfig;
 
-const ENERGY_VIEW = {
-  path: "electricity",
-  strategy: {
-    type: "energy",
-    collection_key: DEFAULT_ENERGY_COLLECTION_KEY,
-  },
-} as LovelaceStrategyViewConfig;
-
-const WATER_VIEW = {
-  path: "water",
-  strategy: {
-    type: "water",
-    collection_key: DEFAULT_ENERGY_COLLECTION_KEY,
-  },
-} as LovelaceStrategyViewConfig;
-
-const GAS_VIEW = {
-  path: "gas",
-  strategy: {
-    type: "gas",
-    collection_key: DEFAULT_ENERGY_COLLECTION_KEY,
-  },
-} as LovelaceStrategyViewConfig;
-
-const POWER_VIEW = {
-  path: "now",
-  strategy: {
-    type: "power",
-    collection_key: DEFAULT_POWER_COLLECTION_KEY,
-  },
-} as LovelaceStrategyViewConfig;
+const OVERVIEW_VIEW = defineView("overview", "energy-overview");
+const ENERGY_VIEW = defineView("electricity", "energy");
+const WATER_VIEW = defineView("water", "water");
+const GAS_VIEW = defineView("gas", "gas");
+const POWER_VIEW = defineView("now", "power");
 
 const WIZARD_VIEW = {
   type: "panel",
@@ -77,6 +52,54 @@ export interface EnergyDashboardStrategyConfig extends LovelaceStrategyConfig {
   hidden_cards?: string[];
 }
 
+/**
+ * Picks which views the dashboard should offer, and in what order, for the
+ * given preferences. A candidate view is dropped when every card it would
+ * render has been hidden by the user, so we don't show an empty tab - unless
+ * that would drop every view, in which case we keep them all so the
+ * dashboard never renders blank and the customise entry stays reachable.
+ *
+ * Pure aside from reading `conditions`/`hidden`, so it's testable without a
+ * `HomeAssistant` instance or an energy collection subscription.
+ */
+export const selectEnergyDashboardViews = (
+  conditions: EnergyConditions,
+  hidden: string[] | undefined
+): LovelaceStrategyViewConfig[] => {
+  const hasEnergy = conditions.hasEnergySource;
+  const hasGas = conditions.hasGasSource;
+  const hasWater = conditions.hasWaterSource || conditions.hasWaterDevices;
+  const hasDevices = conditions.hasDeviceConsumption;
+  const hasPower = conditions.hasPowerSources || conditions.hasPowerDevices;
+
+  const candidateViewSpecs: readonly {
+    view: LovelaceStrategyViewConfig;
+    show: boolean;
+  }[] = [
+    { view: ENERGY_VIEW, show: hasEnergy || hasDevices },
+    { view: GAS_VIEW, show: hasGas },
+    { view: WATER_VIEW, show: hasWater },
+    { view: POWER_VIEW, show: hasPower },
+  ];
+  const candidateViews = candidateViewSpecs
+    .filter((v) => v.show)
+    .map((v) => v.view);
+
+  // The overview only earns its place when there's a "now" power source, or
+  // when it would actually be summarising more than one other view.
+  if (
+    conditions.hasPowerSources ||
+    [hasEnergy, hasGas, hasWater].filter(Boolean).length > 1
+  ) {
+    candidateViews.unshift(OVERVIEW_VIEW);
+  }
+
+  const views = candidateViews.filter(
+    (view) => !conditions.isViewEmpty(view.path as EnergyViewPath, hidden)
+  );
+  return views.length > 0 ? views : candidateViews;
+};
+
 @customElement("energy-dashboard-strategy")
 export class EnergyDashboardStrategy extends ReactiveElement {
   static registryDependencies: readonly LovelaceStrategyDependency[] = [];
@@ -86,57 +109,17 @@ export class EnergyDashboardStrategy extends ReactiveElement {
     hass: HomeAssistant
   ): Promise<LovelaceConfig> {
     const prefs = await fetchEnergyPrefs(hass, _config.default_collection);
+    const conditions = new EnergyConditions(prefs);
 
-    if (
-      !prefs ||
-      (prefs.device_consumption.length === 0 &&
-        prefs.energy_sources.length === 0)
-    ) {
+    if (!conditions.hasAnySource && !conditions.hasDeviceConsumption) {
       await import("../cards/energy-setup-wizard-card");
       return {
         views: [WIZARD_VIEW],
       };
     }
 
-    const hasEnergy = hasEnergySource(prefs);
-    const hasPowerSource = hasPowerSources(prefs);
-    const hasDevicePower = hasPowerDevices(prefs);
-    const hasPower = hasPowerSource || hasDevicePower;
-    const hasWater = hasWaterSource(prefs) || hasWaterDevices(prefs);
-    const hasGas = hasGasSource(prefs);
-    const hasDevices = hasDeviceConsumption(prefs);
-
     const hidden = _config.hidden_cards;
-
-    const candidateViews: LovelaceStrategyViewConfig[] = [];
-    if (hasEnergy || hasDevices) {
-      candidateViews.push(ENERGY_VIEW);
-    }
-    if (hasGas) {
-      candidateViews.push(GAS_VIEW);
-    }
-    if (hasWater) {
-      candidateViews.push(WATER_VIEW);
-    }
-    if (hasPower) {
-      candidateViews.push(POWER_VIEW);
-    }
-    if (
-      hasPowerSource ||
-      [hasEnergy, hasGas, hasWater].filter(Boolean).length > 1
-    ) {
-      candidateViews.unshift(OVERVIEW_VIEW);
-    }
-
-    // Drop a view (tab) when every card it would render has been hidden, so we
-    // don't show an empty tab. Keep at least one view so the dashboard never
-    // renders blank and the customize entry stays reachable.
-    let views = candidateViews.filter(
-      (view) => !isEnergyViewEmpty(view.path as EnergyViewPath, prefs, hidden)
-    );
-    if (views.length === 0) {
-      views = candidateViews;
-    }
+    const views = selectEnergyDashboardViews(conditions, hidden);
 
     return {
       views: views.map((view) => ({

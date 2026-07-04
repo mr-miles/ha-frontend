@@ -1,14 +1,25 @@
 import { ReactiveElement } from "lit";
 import { customElement } from "lit/decorators";
-import {
-  DEFAULT_ENERGY_COLLECTION_KEY,
-  getEnergyDataCollection,
-} from "../../../data/energy";
+import { DEFAULT_ENERGY_COLLECTION_KEY } from "../../../data/energy";
 import type { HomeAssistant } from "../../../types";
 import type { LovelaceViewConfig } from "../../../data/lovelace/config/view";
 import type { LovelaceStrategyDependency } from "../../lovelace/strategies/types";
 import type { EnergyViewStrategyConfig } from "./energy-cards";
-import { hasWaterSource, isEnergyCardVisible } from "./energy-cards";
+import { EnergyCardBuilder } from "./energy-card-builder";
+import { loadEnergyConditions } from "./energy-conditions";
+import { energyDateSelectionFooter } from "./energy-view-layout";
+
+/** Cards rendered as their own single-card section, in order, when visible. */
+const OVERVIEW_SECTION_CARDS: readonly {
+  cardType: string;
+  extra?: Record<string, unknown>;
+}[] = [
+  { cardType: "energy-distribution" },
+  { cardType: "energy-sources-table", extra: { show_only_totals: true } },
+  { cardType: "power-sources-graph", extra: { show_legend: false } },
+  { cardType: "energy-usage-graph" },
+  { cardType: "energy-gas-graph" },
+];
 
 @customElement("energy-overview-view-strategy")
 export class EnergyOverviewViewStrategy extends ReactiveElement {
@@ -27,133 +38,45 @@ export class EnergyOverviewViewStrategy extends ReactiveElement {
       sections: [],
       dense_section_placement: true,
       max_columns: 3,
-      footer: {
-        card: {
-          type: "energy-date-selection",
-          collection_key: collectionKey,
-          opening_direction: "right",
-          vertical_opening_direction: "up",
-        },
-      },
+      footer: energyDateSelectionFooter(collectionKey),
     };
 
-    const energyCollection = getEnergyDataCollection(hass, {
-      key: collectionKey,
-    });
-    if (!energyCollection.prefs) {
-      await energyCollection.refresh();
-    }
-    const prefs = energyCollection.prefs;
+    const conditions = await loadEnergyConditions(hass, collectionKey);
 
     // No energy sources available
     if (
-      !prefs ||
-      (prefs.device_consumption.length === 0 &&
-        prefs.energy_sources.length === 0)
+      !conditions ||
+      (!conditions.hasAnySource && !conditions.hasDeviceConsumption)
     ) {
       return view;
     }
 
-    if (isEnergyCardVisible("overview", "energy-distribution", prefs, hidden)) {
+    const builder = new EnergyCardBuilder(
+      hass,
+      conditions,
+      "overview",
+      collectionKey,
+      hidden
+    );
+
+    for (const { cardType, extra } of OVERVIEW_SECTION_CARDS) {
+      if (!builder.isVisible(cardType)) continue;
       view.sections!.push({
         type: "grid",
-        cards: [
-          {
-            title: hass.localize(
-              "ui.panel.energy.cards.energy_distribution_title"
-            ),
-            type: "energy-distribution",
-            collection_key: collectionKey,
-          },
-        ],
+        cards: [builder.card(cardType, extra)],
       });
     }
 
-    if (
-      isEnergyCardVisible("overview", "energy-sources-table", prefs, hidden)
-    ) {
-      view.sections!.push({
-        type: "grid",
-        cards: [
-          {
-            title: hass.localize(
-              "ui.panel.energy.cards.energy_sources_table_title"
-            ),
-            type: "energy-sources-table",
-            collection_key: collectionKey,
-            show_only_totals: true,
-          },
-        ],
-      });
-    }
-
-    if (isEnergyCardVisible("overview", "power-sources-graph", prefs, hidden)) {
-      view.sections!.push({
-        type: "grid",
-        cards: [
-          {
-            title: hass.localize(
-              "ui.panel.energy.cards.power_sources_graph_title"
-            ),
-            type: "power-sources-graph",
-            collection_key: collectionKey,
-            show_legend: false,
-          },
-        ],
-      });
-    }
-
-    if (isEnergyCardVisible("overview", "energy-usage-graph", prefs, hidden)) {
-      view.sections!.push({
-        type: "grid",
-        cards: [
-          {
-            title: hass.localize(
-              "ui.panel.energy.cards.energy_usage_graph_title"
-            ),
-            type: "energy-usage-graph",
-            collection_key: collectionKey,
-          },
-        ],
-      });
-    }
-
-    if (isEnergyCardVisible("overview", "energy-gas-graph", prefs, hidden)) {
-      view.sections!.push({
-        type: "grid",
-        cards: [
-          {
-            title: hass.localize(
-              "ui.panel.energy.cards.energy_gas_graph_title"
-            ),
-            type: "energy-gas-graph",
-            collection_key: collectionKey,
-          },
-        ],
-      });
-    }
-
-    if (isEnergyCardVisible("overview", "energy-water-graph", prefs, hidden)) {
-      view.sections!.push({
-        type: "grid",
-        cards: [
-          hasWaterSource(prefs)
-            ? {
-                title: hass.localize(
-                  "ui.panel.energy.cards.energy_water_graph_title"
-                ),
-                type: "energy-water-graph",
-                collection_key: collectionKey,
-              }
-            : {
-                title: hass.localize(
-                  "ui.panel.energy.cards.water_sankey_title"
-                ),
-                type: "water-sankey",
-                collection_key: collectionKey,
-              },
-        ],
-      });
+    // One toggle gates the row: render energy-water-graph when there's a
+    // water source, otherwise fall back to water-sankey for water devices.
+    if (builder.isVisible("energy-water-graph")) {
+      const waterCard = conditions.hasWaterSource
+        ? builder.card("energy-water-graph")
+        : builder.card("energy-water-graph", {
+            type: "water-sankey",
+            title: hass.localize("ui.panel.energy.cards.water_sankey_title"),
+          });
+      view.sections!.push({ type: "grid", cards: [waterCard] });
     }
 
     return view;

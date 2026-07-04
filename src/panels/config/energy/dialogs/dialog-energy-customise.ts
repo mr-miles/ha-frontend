@@ -27,10 +27,11 @@ import { DirtyStateProviderMixin } from "../../../../mixins/dirty-state-provider
 import { haStyleDialog } from "../../../../resources/styles";
 import { showToast } from "../../../../util/toast";
 import type {
-  EnergyCardCatalogEntry,
+  EnergyCardDefinition,
   EnergyViewPath,
 } from "../../../energy/strategies/energy-cards";
 import { ENERGY_CARD_CATALOG } from "../../../energy/strategies/energy-cards";
+import { EnergyConditions } from "../../../energy/strategies/energy-conditions";
 import type { EnergyCustomiseDialogParams } from "./show-dialog-energy-customise";
 
 const VIEW_GROUPS: { view: EnergyViewPath; labelKey: LocalizeKeys }[] = [
@@ -69,8 +70,11 @@ export class DialogEnergyCustomise
   // visible, i.e. its key is NOT in this set.
   @state() private _hidden?: Set<string>;
 
+  private _conditions?: EnergyConditions;
+
   public showDialog(params: EnergyCustomiseDialogParams): void {
     this._params = params;
+    this._conditions = new EnergyConditions(params.preferences);
     this._open = true;
     this._loadHidden();
   }
@@ -82,6 +86,7 @@ export class DialogEnergyCustomise
 
   private _dialogClosed(): void {
     this._params = undefined;
+    this._conditions = undefined;
     this._hidden = undefined;
     this._error = undefined;
     this._submitting = false;
@@ -162,11 +167,11 @@ export class DialogEnergyCustomise
   }
 
   private _renderGroups() {
-    const prefs = this._params!.preferences;
+    const conditions = this._conditions!;
     return VIEW_GROUPS.map((group) => {
       const cards = ENERGY_CARD_CATALOG.filter((c) => c.view === group.view);
       // Hide the whole group when none of its cards apply to the current config.
-      if (!cards.some((c) => c.isApplicable(prefs))) {
+      if (!cards.some((c) => conditions.isApplicable(c.view, c.cardType))) {
         return nothing;
       }
       return html`
@@ -183,8 +188,8 @@ export class DialogEnergyCustomise
     });
   }
 
-  private _renderCardRow(card: EnergyCardCatalogEntry) {
-    const applicable = card.isApplicable(this._params!.preferences);
+  private _renderCardRow(card: EnergyCardDefinition) {
+    const applicable = this._conditions!.isApplicable(card.view, card.cardType);
     const label = this._i18n.localize(card.labelKey);
     const rowId = `row-${card.key}`;
     return html`
