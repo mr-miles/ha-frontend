@@ -2,7 +2,7 @@ import type { DeviceConsumptionEnergyPreference } from "../../../data/energy";
 import type { LovelaceCardConfig } from "../../../data/lovelace/config/card";
 import type { HomeAssistant } from "../../../types";
 import type { EnergyCardSpec, EnergyViewPath } from "./energy-cards";
-import { ENERGY_CARD_LABELS } from "./energy-cards";
+import { ENERGY_CARD_LABELS, isEnergyCardHidden } from "./energy-cards";
 import type { EnergyConditions } from "./energy-conditions";
 import { shouldShowFloorsAndAreas } from "./show-floors-and-areas";
 
@@ -30,6 +30,17 @@ export class EnergyCardBuilder {
   /** Whether `cardType` should currently be rendered in this view. */
   isVisible(cardType: string): boolean {
     return this._conditions.isVisible(this._view, cardType, this._hidden);
+  }
+
+  /**
+   * Same check as `isVisible`, but evaluated straight from a spec already in
+   * hand instead of re-finding it by cardType through `EnergyConditions`.
+   */
+  private _isSpecVisible(spec: EnergyCardSpec): boolean {
+    return (
+      spec.isApplicable(this._conditions) &&
+      !isEnergyCardHidden(this._view, spec.cardType, this._hidden)
+    );
   }
 
   /**
@@ -82,7 +93,7 @@ export class EnergyCardBuilder {
    */
   addAll(target: LovelaceCardConfig[], specs: readonly EnergyCardSpec[]): void {
     for (const spec of specs) {
-      if (spec.dynamic || !this.isVisible(spec.cardType)) continue;
+      if (spec.dynamic || !this._isSpecVisible(spec)) continue;
       target.push(this.card(spec.cardType, spec.extra, { title: spec.title }));
     }
   }

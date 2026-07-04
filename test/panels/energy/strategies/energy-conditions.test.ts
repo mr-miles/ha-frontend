@@ -5,8 +5,8 @@ import type {
 } from "../../../../src/data/energy";
 import type { EnergyViewPath } from "../../../../src/panels/energy/strategies/energy-cards";
 import {
-  ENERGY_VIEW_CARDS,
   energyCardKey,
+  getEnergyViewCards,
 } from "../../../../src/panels/energy/strategies/energy-cards";
 import { EnergyConditions } from "../../../../src/panels/energy/strategies/energy-conditions";
 
@@ -205,8 +205,9 @@ describe("EnergyConditions.isVisible", () => {
     const conditions = new EnergyConditions(
       makePrefs({ energy_sources: [GRID_RETURN, SOLAR, GAS, WATER] })
     );
-    for (const view of Object.keys(ENERGY_VIEW_CARDS) as EnergyViewPath[]) {
-      for (const spec of ENERGY_VIEW_CARDS[view]) {
+    const viewCards = getEnergyViewCards();
+    for (const view of Object.keys(viewCards) as EnergyViewPath[]) {
+      for (const spec of viewCards[view]) {
         expect(conditions.isVisible(view, spec.cardType, undefined)).toBe(
           conditions.isApplicable(view, spec.cardType)
         );

@@ -2,6 +2,11 @@ import type { LocalizeKeys } from "../../../common/translations/localize";
 import type { LovelaceCardConfig } from "../../../data/lovelace/config/card";
 import type { LovelaceStrategyConfig } from "../../../data/lovelace/config/strategy";
 import type { EnergyConditions } from "./energy-conditions";
+import { OVERVIEW_CARDS } from "./energy-overview-view-cards";
+import { ELECTRICITY_CARDS } from "./energy-view-cards";
+import { GAS_CARDS } from "./gas-view-cards";
+import { WATER_CARDS } from "./water-view-cards";
+import { POWER_CARDS } from "./power-view-cards";
 
 /** Strategy config shared by the per-view energy strategies. */
 export interface EnergyViewStrategyConfig extends LovelaceStrategyConfig {
@@ -22,12 +27,15 @@ export const isEnergyCardHidden = (
 ): boolean => !!hidden?.includes(energyCardKey(view, cardType));
 
 // --- Card catalog ------------------------------------------------------
-// Each view owns the list of cards it can render, including whether a card
-// applies to a given set of preferences. A view strategy uses its list
-// directly to build its cards; the customise dialog reads the same lists
-// (via ENERGY_VIEW_CARDS) to render its per-view toggle groups. There is
-// exactly one place a card is declared for a view, so the two can never
-// disagree about what exists or when it applies.
+// Each view's own card list (OVERVIEW_CARDS, ELECTRICITY_CARDS, ...) lives
+// next to that view's strategy, in its `*-view-cards.ts` sibling - the one
+// non-Lit module a `*-view-strategy.ts` file and this file both depend on.
+// A view strategy uses its own list directly to build its cards; the
+// customise dialog reads the same lists (via getEnergyViewCards() below) to
+// render its per-view toggle groups. There is exactly one place a card is
+// declared for a view, so the two can never disagree about what exists or
+// when it applies - and neither has to import the (heavier, independently
+// lazy-loaded) Lit strategy components to get there.
 //
 // A card's localized title never varies by the view that embeds it - the
 // same Lovelace card renders identically regardless of which tab it's on -
@@ -78,174 +86,24 @@ export const ENERGY_CARD_LABELS: Readonly<Record<string, LocalizeKeys>> = {
   "water-flow-sankey": "ui.panel.energy.cards.water_flow_sankey_title",
 };
 
-export const OVERVIEW_CARDS: readonly EnergyCardSpec[] = [
-  {
-    cardType: "energy-distribution",
-    isApplicable: (c) => c.hasGridSource || c.hasBattery || c.hasSolar,
-  },
-  {
-    cardType: "energy-sources-table",
-    isApplicable: (c) => c.hasAnySource,
-    extra: { show_only_totals: true },
-  },
-  {
-    cardType: "power-sources-graph",
-    isApplicable: (c) => c.hasPowerSources,
-    extra: { show_legend: false },
-  },
-  {
-    cardType: "energy-usage-graph",
-    isApplicable: (c) => c.hasGridSource || c.hasBattery,
-  },
-  { cardType: "energy-gas-graph", isApplicable: (c) => c.hasGasSource },
-  // One toggle gates the row: the strategy renders energy-water-graph when
-  // there's a water source, otherwise falls back to water-sankey.
-  {
-    cardType: "energy-water-graph",
-    isApplicable: (c) => c.hasWaterSource || c.hasWaterDevices,
-    dynamic: true,
-  },
-];
-
-export const ELECTRICITY_CARDS: readonly EnergyCardSpec[] = [
-  {
-    cardType: "energy-distribution",
-    isApplicable: (c) => c.hasGridSource || c.hasBattery || c.hasSolar,
-    slot: "sidebar",
-  },
-  // Only included if we have both grid import and export configured.
-  {
-    cardType: "energy-grid-balance",
-    isApplicable: (c) => c.hasGridSource && c.hasReturn,
-    title: false,
-    slot: "sidebar",
-  },
-  // Only included if we have a grid source & return.
-  {
-    cardType: "energy-grid-neutrality-gauge",
-    isApplicable: (c) => c.hasReturn,
-    title: false,
-    slot: "gauge",
-  },
-  // Only included if we have a solar source & return.
-  {
-    cardType: "energy-solar-consumed-gauge",
-    isApplicable: (c) => c.hasSolar && c.hasReturn,
-    title: false,
-    slot: "gauge",
-  },
-  // Only included if we have a solar source & grid.
-  {
-    cardType: "energy-self-sufficiency-gauge",
-    isApplicable: (c) => c.hasSolar && c.hasGridSource,
-    title: false,
-    slot: "gauge",
-  },
-  // Only included if we have a grid.
-  {
-    cardType: "energy-carbon-consumed-gauge",
-    isApplicable: (c) => c.hasGridSource,
-    title: false,
-    slot: "gauge",
-  },
-  {
-    cardType: "energy-usage-graph",
-    isApplicable: (c) => c.hasGridSource || c.hasBattery,
-    extra: { grid_options: { columns: 36 } },
-    slot: "main",
-  },
-  {
-    cardType: "energy-solar-graph",
-    isApplicable: (c) => c.hasSolar,
-    extra: { grid_options: { columns: 36 } },
-    slot: "main",
-  },
-  {
-    cardType: "energy-sources-table",
-    isApplicable: (c) => c.hasGridSource || c.hasSolar || c.hasBattery,
-    extra: {
-      types: ["grid", "solar", "battery"],
-      grid_options: { columns: 36 },
-    },
-    slot: "main",
-  },
-  // Device cards: each only included if we have at least 1 device configured.
-  {
-    cardType: "energy-devices-detail-graph",
-    isApplicable: (c) => c.hasDeviceConsumption,
-    extra: { grid_options: { columns: 36 } },
-    slot: "main",
-  },
-  {
-    cardType: "energy-devices-graph",
-    isApplicable: (c) => c.hasDeviceConsumption,
-    extra: { grid_options: { columns: 36 } },
-    slot: "main",
-  },
-  {
-    cardType: "energy-sankey",
-    isApplicable: (c) => c.hasDeviceConsumption,
-    dynamic: true,
-    slot: "main",
-  },
-];
-
-export const GAS_CARDS: readonly EnergyCardSpec[] = [
-  {
-    cardType: "energy-gas-graph",
-    isApplicable: (c) => c.hasGasSource,
-    extra: { grid_options: { columns: 24 } },
-  },
-  {
-    cardType: "energy-sources-table",
-    isApplicable: (c) => c.hasGasSource,
-    extra: { types: ["gas"], grid_options: { columns: 12 } },
-  },
-];
-
-export const WATER_CARDS: readonly EnergyCardSpec[] = [
-  {
-    cardType: "energy-water-graph",
-    isApplicable: (c) => c.hasWaterSource,
-    extra: { grid_options: { columns: 24 } },
-  },
-  {
-    cardType: "energy-sources-table",
-    isApplicable: (c) => c.hasWaterSource,
-    extra: { types: ["water"], grid_options: { columns: 12 } },
-  },
-  // Only included if we have at least 1 water device in the config.
-  {
-    cardType: "water-sankey",
-    isApplicable: (c) => c.hasWaterDevices,
-    dynamic: true,
-  },
-];
-
-export const POWER_CARDS: readonly EnergyCardSpec[] = [
-  {
-    cardType: "power-sources-graph",
-    isApplicable: (c) => c.hasPowerSources,
-    extra: { grid_options: { columns: 36 } },
-  },
-  {
-    cardType: "power-sankey",
-    isApplicable: (c) => c.hasPowerDevices,
-    dynamic: true,
-  },
-  {
-    cardType: "water-flow-sankey",
-    isApplicable: (c) => c.hasWaterRateDevices,
-    dynamic: true,
-  },
-];
-
-export const ENERGY_VIEW_CARDS: Readonly<
+/**
+ * Every view's card list, keyed by view. Built inside a function rather than
+ * as a top-level constant: this module and each `*-view-cards.ts` sibling
+ * import each other (this file for `EnergyCardSpec`/labels, the siblings for
+ * their own `OVERVIEW_CARDS` etc.), and depending on which strategy a
+ * consumer happens to import first, that cycle can resolve in an order where
+ * one of these five bindings is still uninitialized. Reading them eagerly at
+ * module top level risked silently capturing `undefined` for whichever view
+ * lost that race; deferring the read into a function body means it only ever
+ * runs after the whole module graph has finished loading, once, well before
+ * any view strategy or the customise dialog actually calls this.
+ */
+export const getEnergyViewCards = (): Readonly<
   Record<EnergyViewPath, readonly EnergyCardSpec[]>
-> = {
+> => ({
   overview: OVERVIEW_CARDS,
   electricity: ELECTRICITY_CARDS,
   gas: GAS_CARDS,
   water: WATER_CARDS,
   now: POWER_CARDS,
-};
+});

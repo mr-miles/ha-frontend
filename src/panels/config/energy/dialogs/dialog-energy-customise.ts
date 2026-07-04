@@ -32,8 +32,8 @@ import type {
 } from "../../../energy/strategies/energy-cards";
 import {
   ENERGY_CARD_LABELS,
-  ENERGY_VIEW_CARDS,
   energyCardKey,
+  getEnergyViewCards,
 } from "../../../energy/strategies/energy-cards";
 import { EnergyConditions } from "../../../energy/strategies/energy-conditions";
 import type { EnergyCustomiseDialogParams } from "./show-dialog-energy-customise";
@@ -173,9 +173,9 @@ export class DialogEnergyCustomise
   private _renderGroups() {
     const conditions = this._conditions!;
     return VIEW_GROUPS.map((group) => {
-      const cards = ENERGY_VIEW_CARDS[group.view];
+      const cards = getEnergyViewCards()[group.view];
       // Hide the whole group when none of its cards apply to the current config.
-      if (!cards.some((c) => conditions.isApplicable(group.view, c.cardType))) {
+      if (!cards.some((c) => c.isApplicable(conditions))) {
         return nothing;
       }
       return html`
@@ -193,7 +193,7 @@ export class DialogEnergyCustomise
   }
 
   private _renderCardRow(view: EnergyViewPath, card: EnergyCardSpec) {
-    const applicable = this._conditions!.isApplicable(view, card.cardType);
+    const applicable = card.isApplicable(this._conditions!);
     const labelKey = ENERGY_CARD_LABELS[card.cardType];
     const label = labelKey ? this._i18n.localize(labelKey) : card.cardType;
     const key = energyCardKey(view, card.cardType);

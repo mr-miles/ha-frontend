@@ -6,8 +6,8 @@ import type {
 import type { HomeAssistant } from "../../../types";
 import type { EnergyViewPath } from "./energy-cards";
 import {
-  ENERGY_VIEW_CARDS,
   energyCardKey,
+  getEnergyViewCards,
   isEnergyCardHidden,
 } from "./energy-cards";
 
@@ -34,7 +34,7 @@ type EnergyConditionName =
  * `hasBattery`, ...) are lazily evaluated and cached on first access, since
  * a single `generate()` call reads several of them multiple times across a
  * view's cards. Card-level applicability is read directly from each view's
- * own card list (`ENERGY_VIEW_CARDS` in energy-cards.ts) - there's no
+ * own card list (`getEnergyViewCards()` in energy-cards.ts) - there's no
  * separate applicability table that could drift out of sync with it.
  */
 export class EnergyConditions {
@@ -176,7 +176,9 @@ export class EnergyConditions {
 
   /** Whether the catalog card `(view, cardType)` can ever show for these preferences. */
   isApplicable(view: EnergyViewPath, cardType: string): boolean {
-    const spec = ENERGY_VIEW_CARDS[view]?.find((c) => c.cardType === cardType);
+    const spec = getEnergyViewCards()[view]?.find(
+      (c) => c.cardType === cardType
+    );
     return !!spec && spec.isApplicable(this);
   }
 
@@ -197,7 +199,7 @@ export class EnergyConditions {
 
   /** Keys of all catalog cards that apply to these preferences for a view. */
   applicableCardKeys(view: EnergyViewPath): string[] {
-    return (ENERGY_VIEW_CARDS[view] ?? [])
+    return (getEnergyViewCards()[view] ?? [])
       .filter((c) => c.isApplicable(this))
       .map((c) => energyCardKey(view, c.cardType));
   }
